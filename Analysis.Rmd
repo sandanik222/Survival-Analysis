@@ -1,0 +1,213 @@
+---
+title: "Project_New"
+author: "Sandani Kumanayake"
+date: "`r Sys.Date()`"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Status Variable
+
+```{r}
+data("wihs", package = "randomForestSRC")
+df <- as.data.frame(wihs)
+summary(df)
+```
+
+
+```{r, message=FALSE, warning=FALSE}
+
+library(survival)
+library(survminer)
+library(ggplot2)
+library(gridExtra)
+
+# Subset and prepare data
+df1 <- df[df$status %in% c(0, 1), ]
+df1$status <- ifelse(df1$status == 1, 1, 0)  
+
+df2 <- df[df$status %in% c(0, 2), ]
+df2$status <- ifelse(df2$status == 2, 1, 0) 
+
+
+# Create Kaplan-Meier fits
+surv_obj1 <- Surv(time = df1$time, event = df1$status)
+km_fit1 <- survfit(surv_obj1 ~ 1)
+
+surv_obj2 <- Surv(time = df2$time, event = df2$status)
+km_fit2 <- survfit(surv_obj2 ~ 1)
+
+
+p1 <- ggsurvplot(km_fit1, data = df1, pval = TRUE, risk.table = TRUE,
+                 ggtheme = theme_minimal(), conf.int = TRUE,
+                 palette = "jco",
+                 xlab = "Time in Days", ylab = "Survival Probability",
+                 title = "KM Survival Curve for HAART Initiation",  
+                 theme = theme(plot.margin = unit(c(1, 1, 1, 1), "cm")))  
+
+p2 <- ggsurvplot(km_fit2, data = df2, pval = TRUE, risk.table = TRUE,
+                 ggtheme = theme_minimal(), conf.int = TRUE,
+                 palette = "jco",
+                 xlab = "Time in Days", ylab = "Survival Probability",
+                 title = "KM Survival Curve for AIDS Diagnosis or Death",  
+                 theme = theme(plot.margin = unit(c(1, 1, 1, 1), "cm")))  
+
+
+p1
+
+p2
+```
+
+```{r}
+
+df1$age_group <- cut(df1$ageatfda,
+                     breaks = c(17, 29, 39, 49, 59, 73),
+                     labels = c("17-29", "30-39", "40-49", "50-59", "60+"),
+                     include.lowest = TRUE)
+
+# Kaplan-Meier fits for age, race, and IDU for df1
+km_fit1_age <- survfit(surv_obj1 ~ age_group, data = df1)
+p1_age <- ggsurvplot(
+  km_fit1_age, data = df1,
+  pval = TRUE,
+  xlab = "Time in Days", ylab = "Survival Probability",
+  title = "Survival by Age Group for HAART Initiation",
+  legend.title = "Age Groups",
+  legend.labs = levels(df1$age_group),  
+  legend = "right")
+
+km_fit1_race <- survfit(surv_obj1 ~ black, data = df1)
+p1_race <- ggsurvplot(km_fit1_race, data = df1,
+                      pval = TRUE,
+                      palette = "Dark2",
+                      ggtheme = theme_minimal(),
+                      xlab = "Time in Days", ylab = "Survival Probability",
+                      title = "Survival by Race for HAART Initiation")
+
+km_fit1_idu <- survfit(surv_obj1 ~ idu, data = df1)
+p1_idu <- ggsurvplot(km_fit1_idu, data = df1,
+                     pval = TRUE,
+                     palette = "Set1",
+                     ggtheme = theme_minimal(),
+                     xlab = "Time in Days", ylab = "Survival Probability",
+                     title = "Survival by IDU History for HAART Initiation")
+
+p1_age
+
+p1_race
+
+p1_idu
+
+```
+
+```{r}
+
+# Adding age categories to df2
+df2$age_group <- cut(df2$ageatfda,
+                     breaks = c(17, 29, 39, 49, 59, 73),
+                     labels = c("17-29", "30-39", "40-49", "50-59", "60+"),
+                     include.lowest = TRUE)
+
+# Create Kaplan-Meier fits for age, race, and IDU for df2
+km_fit2_age <- survfit(Surv(time = df2$time, event = df2$status) ~ age_group, data = df2)
+p2_age <- ggsurvplot(
+  km_fit2_age, data = df2,
+  pval = TRUE,
+  xlab = "Time in Days", ylab = "Survival Probability",
+  title = "Survival by Age Group for AIDS Diagnosis or Death",
+  legend.title = "Age Groups",
+  legend.labs = levels(df2$age_group),
+  legend = "right")
+
+km_fit2_race <- survfit(Surv(time = df2$time, event = df2$status) ~ black, data = df2)
+p2_race <- ggsurvplot(km_fit2_race, data = df2,
+                      pval = TRUE,
+                      palette = "Dark2",
+                      ggtheme = theme_minimal(),
+                      xlab = "Time in Days", ylab = "Survival Probability",
+                      title = "Survival by Race for AIDS Diagnosis or Death")
+
+km_fit2_idu <- survfit(Surv(time = df2$time, event = df2$status) ~ idu, data = df2)
+p2_idu <- ggsurvplot(km_fit2_idu, data = df2,
+                     pval = TRUE,
+                     palette = "Set1",
+                     ggtheme = theme_minimal(),
+                     xlab = "Time in Days", ylab = "Survival Probability",
+                     title = "Survival by IDU History for AIDS Diagnosis or Death")
+
+# Print the plots
+p2_age
+p2_race
+p2_idu
+
+```
+
+```{r}
+
+df1$log_cd4nadir <- log(df1$cd4nadir + 1) 
+
+coxph_model_df1 <- coxph(Surv(time, status) ~ ageatfda + strata(black) + idu + log_cd4nadir, data = df1)
+summary(coxph_model_df1)
+
+
+```
+
+```{r}
+
+ph_test1 <- cox.zph(coxph_model_df1)
+print(ph_test1)
+
+par(mfrow = c(2, 2))
+plot(ph_test1)
+```
+
+```{r}
+
+df2$log_cd4nadir <- log(df2$cd4nadir + 1) 
+
+coxph_model_df2 <- coxph(Surv(time, status) ~ ageatfda + black + idu + log_cd4nadir, data = df2)
+summary(coxph_model_df2)
+
+```
+
+
+```{r}
+
+ph_test2 <- cox.zph(coxph_model_df2)
+print(ph_test2)
+
+par(mfrow = c(2, 2))
+plot(ph_test2)
+
+```
+
+
+```{r}
+
+
+wihs_obj <- rfsrc(Surv(time, status) ~ ., data = wihs, nsplit = 3, ntree = 100)
+print(wihs_obj)
+
+
+```
+```{r}
+
+vimp(wihs_obj)
+
+plot(vimp(wihs_obj), main = "Variable Importance - WIHS Dataset")
+
+```
+
+
+
+
+
+
+
+
+
+
+
